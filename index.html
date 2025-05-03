@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Live Campus Navigation</title>
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.6.1/mapbox-gl.js"></script>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.6.1/mapbox-gl.css" rel="stylesheet"/>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f4f4f9;
+      color: #333;
+    }
+
+    #map {
+      width: 100%;
+      height: 100vh;
+    }
+
+    #controls {
+      padding: 15px 25px;
+      background: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 10;
+      border-radius: 12px;
+      box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+      width: 400px;
+    }
+
+    #controls label {
+      font-size: 16px;
+      font-weight: 600;
+      color: #007cbf;
+    }
+
+    #controls select, #controls button {
+      padding: 10px 15px;
+      font-size: 14px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      background-color: #fafafa;
+      cursor: pointer;
+    }
+
+    #controls button {
+      background-color: #007cbf;
+      color: white;
+      font-weight: 700;
+    }
+
+    #infoCard {
+      position: absolute;
+      top: 120px;
+      right: 20px;
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      font-size: 16px;
+      color: #333;
+      width: 280px;
+      display: none;
+    }
+
+    #infoCard h3 {
+      color: #007cbf;
+    }
+
+    @media (max-width: 768px) {
+      #controls {
+        width: 100%;
+        position: static;
+        margin-top: 20px;
+        box-shadow: none;
+      }
+
+      #infoCard {
+        width: 100%;
+        margin-top: 20px;
+      }
+
+      #map {
+        height: 70vh;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="controls">
+    <div>
+      <label for="destination">Select Destination:</label>
+      <select id="destination">
+        <option value="73.88367516423422,18.459181351404517">Building 2</option>
+        <option value="73.8835843028105,18.460288315096374">Main Building</option>
+        <option value="73.88416703777891,18.458350387535205">Building 4</option>
+        <option value="73.88385830208395,18.457996621351942">Building 5</option>
+        <option value="73.88390385295752,18.457775500169415">Basketball Court</option>
+        <option value="73.88390653242094,18.457495921254193">Playground</option>
+        <option value="73.88407773451284,18.45874112469597">Building 3</option>
+        <option value="73.88411692573803,18.458480900120453">Canteen</option>
+      </select>
+    </div>
+    <div>
+      <button onclick="updateRoute()">Start Navigation</button>
+      <button id="viewToggle" onclick="toggleView()">Switch to 3D View</button>
+    </div>
+  </div>
+
+  <div id="map"></div>
+  <div id="infoCard"></div>
+
+  <script>
+    let is3D = false;
+    mapboxgl.accessToken = 'pk.eyJ1IjoidmVkYW50b20iLCJhIjoiY202bWEweDMwMGV2YzJrczRlZ2JtYWZibSJ9.LC_mF9gyUu5vBXuot8FQWQ';
+
+    const map = new mapboxgl.Map({
+      container: 'map',
+      style: 'mapbox://styles/mapbox/satellite-streets-v11',
+      center: [73.88367516423422, 18.459181351404517],
+      zoom: 17,
+      pitch: 60,
+      bearing: -17.6,
+      antialias: true,
+    });
+
+    const userMarker = new mapboxgl.Marker({ color: "blue" });
+    let destinationMarker;
+    let routeLayerAdded = false;
+
+    if ("geolocation" in navigator) {
+      navigator.geolocation.watchPosition(position => {
+        const userCoords = [position.coords.longitude, position.coords.latitude];
+        userMarker.setLngLat(userCoords).addTo(map);
+        map.flyTo({ center: userCoords, zoom: 17 });
+      }, error => {
+        console.error("Location error:", error);
+      }, { enableHighAccuracy: true });
+    }
+
+    function updateRoute() {
+      const destinationCoords = document.getElementById("destination").value.split(",").map(Number);
+
+      if (destinationMarker) {
+        destinationMarker.setLngLat(destinationCoords);
+      } else {
+        destinationMarker = new mapboxgl.Marker({ color: "red" })
+          .setLngLat(destinationCoords)
+          .addTo(map);
+      }
+
+      drawRadiusCircle(destinationCoords, 25); // Draw 100m radius circle
+
+      const userLngLat = userMarker.getLngLat();
+
+      fetch(`https://api.mapbox.com/directions/v5/mapbox/walking/${userLngLat.lng},${userLngLat.lat};${destinationCoords[0]},${destinationCoords[1]}?geometries=geojson&overview=full&steps=true&access_token=${mapboxgl.accessToken}`)
+        .then(response => response.json())
+        .then(data => {
+          const routeCoordinates = data.routes[0].geometry.coordinates;
+          const distance = (data.routes[0].distance / 1000).toFixed(2);
+          const duration = Math.round(data.routes[0].duration / 60);
+
+          if (routeLayerAdded) {
+            map.removeLayer('route-line');
+            map.removeSource('route');
+          }
+
+          map.addSource('route', {
+            type: 'geojson',
+            data: {
+              type: 'Feature',
+              geometry: {
+                type: 'LineString',
+                coordinates: routeCoordinates
+              }
+            }
+          });
+
+          map.addLayer({
+            id: 'route-line',
+            type: 'line',
+            source: 'route',
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: { 'line-color': '#007cbf', 'line-width': 4 }
+          });
+
+          routeLayerAdded = true;
+
+          document.getElementById("infoCard").innerHTML = `
+            <h3>📍 Route Summary</h3>
+            <p><strong>Distance:</strong> ${distance} km</p>
+            <p><strong>Estimated Time:</strong> ${duration} min</p>
+          `;
+          document.getElementById("infoCard").style.display = "block";
+        })
+        .catch(error => console.error('Route fetch error:', error));
+    }
+
+    function drawRadiusCircle(center, radiusInMeters = 500) {
+      const circleGeoJSON = {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            geometry: createCircle(center, radiusInMeters, 64),
+          },
+        ],
+      };
+
+      if (map.getSource('circle-radius')) {
+        map.getSource('circle-radius').setData(circleGeoJSON);
+      } else {
+        map.addSource('circle-radius', {
+          type: 'geojson',
+          data: circleGeoJSON
+        });
+
+        map.addLayer({
+          id: 'radius-fill',
+          type: 'fill',
+          source: 'circle-radius',
+          paint: {
+            'fill-color': '#aa00ff',
+            'fill-opacity': 0.3
+          }
+        });
+
+        map.addLayer({
+          id: 'radius-outline',
+          type: 'line',
+          source: 'circle-radius',
+          paint: {
+            'line-color': '#aa00ff',
+            'line-width': 2
+          }
+        });
+      }
+    }
+
+    function createCircle(center, radiusInMeters, points) {
+      const coords = {
+        latitude: center[1],
+        longitude: center[0]
+      };
+
+      const km = radiusInMeters / 1000;
+      const ret = [];
+      const distanceX = km / (111.320 * Math.cos(coords.latitude * Math.PI / 180));
+      const distanceY = km / 110.574;
+
+      for (let i = 0; i < points; i++) {
+        const theta = (i / points) * (2 * Math.PI);
+        const x = distanceX * Math.cos(theta);
+        const y = distanceY * Math.sin(theta);
+        ret.push([coords.longitude + x, coords.latitude + y]);
+      }
+
+      ret.push(ret[0]);
+      return {
+        type: "Polygon",
+        coordinates: [ret]
+      };
+    }
+
+    function toggleView() {
+      if (is3D) {
+        map.setPitch(0);
+        document.getElementById("viewToggle").textContent = "Switch to 3D View";
+      } else {
+        map.setPitch(60);
+        document.getElementById("viewToggle").textContent = "Switch to 2D View";
+      }
+      is3D = !is3D;
+    }
+  </script>
+</body>
+</html>
