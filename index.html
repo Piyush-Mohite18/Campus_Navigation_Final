@@ -57,40 +57,52 @@
     }
 
     #infoCard {
-      position: absolute;
-      top: 120px;
-      right: 20px;
-      background: white;
-      padding: 25px;
-      border-radius: 12px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-      font-size: 16px;
-      color: #333;
-      width: 280px;
-      display: none;
-    }
+  position: absolute;
+  top: 120px;
+  right: 20px;
+  background: white;
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  font-size: 16px;
+  color: #333;
+  width: 280px;
+  max-width: 90vw; /* <-- NEW: Prevent overflow on small screens */
+  box-sizing: border-box;
+  display: none;
+  z-index: 10;
+}
 
-    #infoCard h3 {
-      color: #007cbf;
-    }
 
-    @media (max-width: 768px) {
-      #controls {
-        width: 100%;
-        position: static;
-        margin-top: 20px;
-        box-shadow: none;
-      }
+@media (max-width: 768px) {
+  #controls {
+    flex-direction: column;
+    width: calc(100% - 40px);
+    left: 10px;
+    right: 10px;
+  }
 
-      #infoCard {
-        width: 100%;
-        margin-top: 20px;
-      }
+  #infoCard {
+    top: auto;
+    bottom: 20px;
+    right: 10px;
+    left: 10px;
+    width: auto;
+    max-width: 100%;
+  }
 
-      #map {
-        height: 70vh;
-      }
-    }
+  .geocoder-container {
+    top: 100px;
+    right: 10px;
+    left: 10px;
+    width: auto;
+  }
+
+  #map {
+    height: 70vh;
+  }
+}
+
   </style>
 </head>
 <body>
